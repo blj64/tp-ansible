@@ -1,0 +1,16 @@
+- name: Déployer la base de données
+  hosts: bdd
+  become: true
+  vars_files:
+    - roles/bdd/vars/main.yml
+
+  roles:
+    - bdd
+
+- name: Déployer l'application
+  hosts: app
+  become: true
+  vars_files:
+    - roles/app/vars/main.yml
+  roles:
+    - app

@@ -1,0 +1,15 @@
+[Unit]
+Description=Flask API avec Gunicorn
+After=network.target
+
+[Service]
+User=cytech_usr
+Group=cytech_grp
+WorkingDirectory=/app
+Environment="PATH=/app/venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="DATABASE_URL=postgresql+psycopg2://cytech_usr:cytech@192.168.100.145/cytech"
+ExecStart=/app/venv/bin/gunicorn --workers 3 --bind 0.0.0.0:8080 api:app
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

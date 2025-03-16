@@ -1,0 +1,160 @@
+---
+- name: Installer Python et dépendances
+  apt:
+    name: 
+      - python3
+      - python3-pip
+      - python3-venv
+      - postgresql-client-14  # Ajout du client PostgreSQL 14
+    state: present
+
+# Installer les bibliothèques nécessaires pour psycopg2
+- name: Installer les bibliothèques nécessaires pour psycopg2
+  apt:
+    name: 
+      - libpq-dev
+      - python3-dev
+      - libpq-dev
+    state: present
+
+- name: Install Flask / FastAPI and psycopg2
+  pip:
+    name:
+      - flask
+      - psycopg2-binary
+      - requests  # Pour faire des requêtes HTTP
+      - flask_sqlalchemy
+      - gunicorn
+    virtualenv: /opt/app/venv
+    virtualenv_command: /usr/bin/python3 -m venv
+
+- name: Créer l’environnement virtuel
+  command: /usr/bin/python3 -m venv /opt/app/venv
+  args:
+    creates: /opt/app/venv/bin/python
+
+- name: Ensure python3-venv is installed
+  ansible.builtin.apt:
+    name: python3-venv
+    state: present
+    update_cache: true
+
+
+- name: Check if Python in virtualenv is available
+  command: /opt/app/venv/bin/python --version
+  register: python_version
+  ignore_errors: true
+
+- name: Ensure cytech_grp group exists
+  group:
+    name: cytech_grp
+    state: present
+
+- name: Ensure cytech_usr user exists
+  user:
+    name: cytech_usr
+    group: cytech_grp
+    state: present
+    home: /home/cytech_usr  # Optionnel : répertoire home
+    create_home: yes        # Crée le répertoire home si nécessaire
+
+- name: Déployer app.py
+  template:
+    src: /home/cytech/ansible/tp-note/roles/app/templates/app.py
+    dest: /opt/app/app.py
+    mode: '0777'
+
+
+# Ensure /opt/app directory exists
+- name: Ensure /opt/app directory exists
+  file:
+    path: /opt/app
+    state: directory
+    mode: '0755'
+    owner: cytech_usr
+    group: cytech_grp
+
+# Déployer le fichier de configuration de l'application (connexion DB)
+- name: Déployer le fichier de configuration
+  template:
+    src: config.ini.j2
+    dest: /opt/app/config.ini
+    mode: '0777'
+
+# Déployer le fichier systemd pour gérer l'application en tant que service
+- name: Déployer le fichier de service systemd
+  template:
+    src: app.service.j2
+    dest: /etc/systemd/system/flask-api.service
+    mode: '0777'
+  notify: Reload systemd
+
+
+- name: Déployer app.py 
+  template:
+    src: /home/cytech/ansible/tp-note/roles/app/templates/app.py
+    dest: /opt/app/app.py
+    mode: '0777'
+
+- name: S'assurer que app.py est exécutable
+  file:
+    path: /opt/app/app.py
+    owner: cytech_usr
+    group: cytech_grp
+    mode: '0755'
+
+- name: Give full permissions to cytech_usr on /opt/app
+  file:
+    path: /opt/app
+    state: directory
+    recurse: yes
+    owner: cytech_usr
+    group: cytech_grp
+    mode: '0777'
+
+- name: S'assurer que le dossier /opt/app a les permissions correctes
+  file:
+    path: /opt/app
+    state: directory
+    owner: cytech_usr
+    group: cytech_grp
+    mode: '0755'
+    recurse: yes
+
+- name: S'assurer que app.py et config.ini ont les bonnes permissions
+  file:
+    path: "{{ item }}"
+    owner: cytech_usr
+    group: cytech_grp
+    mode: '0777'
+  loop:
+    - /opt/app/app.py
+    - /opt/app/config.ini
+
+- name: Lancer le service
+  systemd:
+    name: app
+    state: started
+    enabled: true
+
+- name: Recharger systemd pour prendre en compte le nouveau service
+  ansible.builtin.systemd:
+    daemon_reload: yes
+
+- name: Démarrer et activer le service Flask API
+  ansible.builtin.systemd:
+    name: flask-api.service
+    state: restarted
+    enabled: yes
+    
+- name: Récupérer les données de l'API Flask
+  ansible.builtin.uri:
+    url: "http://192.168.100.144:8080/name"
+    method: GET
+    return_content: yes
+  register: result
+
+# Afficher la réponse de l'API
+- name: Debug API response
+  debug:
+    msg: "Résultat de l'API : {{ result.content | default('Pas de réponse') }}"
