@@ -1,0 +1,108 @@
+---
+- name: Install PostgreSQL and psycopg2
+  ansible.builtin.apt:
+    name: postgresql,postgresql-contrib,python3-psycopg2
+    state: present
+    update_cache: true
+    
+- name: Creer group
+  group: 
+    name: cytech_grp
+    state: present
+
+- name: Créer un utilisateur cytech_usr
+  user:
+    name: cytech_usr
+    group: cytech_grp
+
+- name: Install acl package
+  ansible.builtin.apt:
+    name: acl
+    state: present
+    update_cache: true
+
+
+- name: "Find out if PostgreSQL is initialized"
+  ansible.builtin.stat:
+    path: "/var/lib/pgsql/data/pg_hba.conf"
+  register: postgres_data
+
+
+
+- name: Copy PostgreSQL pg_hba.conf file
+  become: true
+  ansible.builtin.template:
+    src: pg_hba.conf.j2
+    dest: "/etc/postgresql/{{ postgresql_version }}/main/pg_hba.conf"
+    owner: postgres
+    group: postgres
+    mode: '0644'
+  notify: Restart Postgresql
+
+- name: Autoriser les connexions de test-ubuntu
+  lineinfile:
+    path: /etc/postgresql/14/main/pg_hba.conf
+    line: "host    all             all             192.168.100.0/24            md5"
+  notify: Restart Postgresql
+
+- name: Configure PostgreSQL to listen on all interfaces
+  become: true
+  ansible.builtin.lineinfile:
+    path: /etc/postgresql/14/main/postgresql.conf
+    regexp: '^#?listen_addresses\s*='  
+    line: "listen_addresses = '*'"    
+  notify: Restart PostgreSQL
+
+
+- name: Create a new database
+  community.postgresql.postgresql_db:
+    name: "{{ db_name }}"
+  become: true
+  become_user: postgres
+
+
+- name: Create a new database user
+  community.postgresql.postgresql_user:
+    name: "{{ db_user }}"
+    password: "{{ db_password }}"
+    role_attr_flags: "LOGIN"
+  become: true
+  become_user: postgres
+
+- name: Grant privileges to user on database
+  community.postgresql.postgresql_privs:
+    db: "{{ db_name }}"
+    privs: ALL
+    type: database
+    roles: "{{ db_user }}"
+  become: true
+  become_user: postgres
+
+- name: Copy init.sql script to server
+  become: true
+  ansible.builtin.template:
+    src: init.sql.j2
+    dest: "/tmp/init.sql"
+    owner: postgres
+    group: postgres
+    mode: '0644'
+
+- name: Execute init.sql script
+  become: true
+  become_user: postgres
+  community.postgresql.postgresql_script:
+    db: "{{ db_name }}"
+    path: "/tmp/init.sql"
+
+- name: Autoriser PostgreSQL sur le pare-feu
+  ufw:
+    rule: allow
+    port: 5432
+    proto: tcp
+
+
+- name: Vérifier si PostgreSQL est actif
+  systemd:
+    name: postgresql
+    state: started
+    enabled: yes

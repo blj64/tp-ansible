@@ -1,0 +1,13 @@
+[Unit]
+Description=Flask API Service
+After=network.target
+
+[Service]
+User=cytech_usr
+Group=cytech_grp
+WorkingDirectory=/opt/app
+ExecStart=/opt/app/venv/bin/python /opt/app/app.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
